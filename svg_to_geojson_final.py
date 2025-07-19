@@ -13,15 +13,18 @@ from shapely.geometry import Point, Polygon, MultiPolygon
 from shapely.ops import nearest_points, unary_union
 import os
 
+
 class Room:
     def __init__(self, name, coordinates):
         self.name = name
         self.coordinates = coordinates
 
+
 class Poly:
     def __init__(self, id, coordinates):
         self.id = id
         self.coordinates = coordinates
+
 
 def svg_path_to_coords(svg_d, num_points=100):
     path = parse_path(svg_d)
@@ -33,10 +36,10 @@ def svg_path_to_coords(svg_d, num_points=100):
             coords.append((pt.real, pt.imag))
     return coords
 
+
 def load_svg(file_name):
     with open(file_name, "r") as f:
         soup = BeautifulSoup(f, "xml")
-    
 
     # Extract all <path> elements
     paths = soup.find_all("path")
@@ -50,14 +53,21 @@ def load_svg(file_name):
         coords = svg_path_to_coords(d)
 
         # Close the polygon if not already closed
-        if coords[0] != coords[-1] and ((coords[0][0] - coords[-1][0])**2 + (coords[0][1] - coords[-1][1])**2)**0.5 > 1:
+        if (
+            coords[0] != coords[-1]
+            and (
+                (coords[0][0] - coords[-1][0]) ** 2
+                + (coords[0][1] - coords[-1][1]) ** 2
+            )
+            ** 0.5
+            > 1
+        ):
             # coords.append(coords[0])
             continue
         # print(i)
         polygon = geojson.Polygon([coords])
         feature = geojson.Feature(geometry=polygon, properties={"id": i})
         features.append(feature)
-
 
     # Wrap as a FeatureCollection
     gj = geojson.FeatureCollection(features)
@@ -73,6 +83,7 @@ def load_svg(file_name):
 
     return gj
 
+
 def remove_duplicate_points(ring):
     new_ring = []
     for i in range(len(ring) - 1):
@@ -80,6 +91,7 @@ def remove_duplicate_points(ring):
             new_ring.append(ring[i])
     new_ring.append(ring[-1])
     return new_ring
+
 
 def is_colinear(p1, p2, p3, tol=1e-6):
     """
@@ -90,6 +102,7 @@ def is_colinear(p1, p2, p3, tol=1e-6):
     x2, y2 = p2
     x3, y3 = p3
     return abs((x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)) < tol
+
 
 def simplify_ring(ring):
     """
@@ -126,6 +139,7 @@ def simplify_ring(ring):
 
     return simplified
 
+
 def simplify_geojson(gj):
     keep_features = []
     for feature in gj["features"]:
@@ -137,14 +151,17 @@ def simplify_geojson(gj):
     print("remove colinear points")
     return gj
 
+
 def normalize_polygon(polygon):
     # Sort the coordinates to ensure consistent order
     return tuple(sorted(map(tuple, polygon)))
+
 
 def enforce_winding_order(polygon):
     # Use shapely to ensure the polygon has the correct winding order
     shapely_polygon = shape({"type": "Polygon", "coordinates": [polygon]})
     return mapping(shapely_polygon)["coordinates"][0]
+
 
 def remove_duplicate_polygons(geojson_data):
     feature_collection = {"type": "FeatureCollection", "features": []}
@@ -175,6 +192,7 @@ def remove_duplicate_polygons(geojson_data):
     print("remove duplicate polygons")
     return feature_collection
 
+
 def remove_covered_polygons(geojson_data):
     """
     Remove polygons that are completely covered by other polygons.
@@ -182,36 +200,34 @@ def remove_covered_polygons(geojson_data):
     """
     features = geojson_data["features"]
     features_to_keep = []
-    
+
     for i, feature1 in enumerate(features):
         if feature1["geometry"]["type"] != "Polygon":
             features_to_keep.append(feature1)
             continue
-            
+
         polygon1 = shape(feature1["geometry"])
         is_covered = False
-        
+
         for j, feature2 in enumerate(features):
             if i == j or feature2["geometry"]["type"] != "Polygon":
                 continue
-                
+
             polygon2 = shape(feature2["geometry"])
-            
+
             # Check if polygon1 is completely covered by polygon2
             if polygon2.contains(polygon1):
                 is_covered = True
                 break
-        
+
         if not is_covered:
             features_to_keep.append(feature1)
-    
-    result = {
-        "type": "FeatureCollection",
-        "features": features_to_keep
-    }
-    
+
+    result = {"type": "FeatureCollection", "features": features_to_keep}
+
     print(f"Removed {len(features) - len(features_to_keep)} covered polygons")
     return result
+
 
 def combine_overlapping_polygons(geojson_data):
     """
@@ -221,29 +237,29 @@ def combine_overlapping_polygons(geojson_data):
     features = geojson_data["features"]
     if len(features) <= 1:
         return geojson_data
-    
+
     # Convert to Shapely polygons for easier manipulation
     shapely_polygons = []
     for feature in features:
         if feature["geometry"]["type"] == "Polygon":
             polygon = shape(feature["geometry"])
             shapely_polygons.append(polygon)
-    
+
     if len(shapely_polygons) <= 1:
         return geojson_data
-    
+
     # Find overlapping polygon groups
     overlapping_groups = []
     used_indices = set()
-    
+
     for i in range(len(shapely_polygons)):
         if i in used_indices:
             continue
-            
+
         # Start a new group with polygon i
         current_group = [i]
         used_indices.add(i)
-        
+
         # Check for overlaps with other polygons
         changed = True
         while changed:
@@ -251,12 +267,14 @@ def combine_overlapping_polygons(geojson_data):
             for j in range(len(shapely_polygons)):
                 if j in used_indices:
                     continue
-                    
+
                 # Check if polygon j overlaps with any polygon in current group
                 for group_idx in current_group:
                     if shapely_polygons[group_idx].intersects(shapely_polygons[j]):
                         # Check if they actually overlap (share area), not just touch
-                        intersection = shapely_polygons[group_idx].intersection(shapely_polygons[j])
+                        intersection = shapely_polygons[group_idx].intersection(
+                            shapely_polygons[j]
+                        )
                         if intersection.area > 0:  # They share area
                             current_group.append(j)
                             used_indices.add(j)
@@ -264,24 +282,24 @@ def combine_overlapping_polygons(geojson_data):
                             break
                 if changed:
                     break
-        
+
         if len(current_group) > 1:
             overlapping_groups.append(current_group)
         else:
             # Single polygon, no overlaps
             overlapping_groups.append([i])
-    
+
     # Merge overlapping groups and keep non-overlapping polygons as-is
     result_features = []
     feature_id = 0
-    
+
     for group in overlapping_groups:
         if len(group) == 1:
             # Single polygon, no overlaps
             original_feature = features[group[0]]
             new_feature = geojson.Feature(
                 geometry=original_feature["geometry"],
-                properties={"id": feature_id, "merged": False}
+                properties={"id": feature_id, "merged": False},
             )
             result_features.append(new_feature)
             feature_id += 1
@@ -289,11 +307,11 @@ def combine_overlapping_polygons(geojson_data):
             # Merge overlapping polygons
             polygons_to_merge = [shapely_polygons[i] for i in group]
             merged_polygon = unary_union(polygons_to_merge)
-            
+
             if merged_polygon.geom_type == "Polygon":
                 new_feature = geojson.Feature(
                     geometry=mapping(merged_polygon),
-                    properties={"id": feature_id, "merged": True, "merged_from": group}
+                    properties={"id": feature_id, "merged": True, "merged_from": group},
                 )
                 result_features.append(new_feature)
                 feature_id += 1
@@ -302,18 +320,23 @@ def combine_overlapping_polygons(geojson_data):
                 for i, polygon in enumerate(merged_polygon.geoms):
                     new_feature = geojson.Feature(
                         geometry=mapping(polygon),
-                        properties={"id": feature_id, "merged": True, "merged_from": group}
+                        properties={
+                            "id": feature_id,
+                            "merged": True,
+                            "merged_from": group,
+                        },
                     )
                     result_features.append(new_feature)
                     feature_id += 1
-    
+
     result = geojson.FeatureCollection(result_features)
-    
+
     original_count = len(features)
     result_count = len(result_features)
     print(f"Combined overlapping polygons: {original_count} -> {result_count} polygons")
-    
+
     return result
+
 
 def get_room_tags(svg_file):
     tree = ET.parse(svg_file)
@@ -339,6 +362,7 @@ def get_room_tags(svg_file):
             seen.add(room_name)
     return room_tags
 
+
 def parse_geojson(geojson_file):
     # with open(geojson_file) as f:
     #     data = json.load(f)
@@ -352,6 +376,7 @@ def parse_geojson(geojson_file):
 
     return polygons
 
+
 def match_rooms_to_polygons(room_tags, polygons):
     matches = []
     for room in room_tags:
@@ -364,13 +389,15 @@ def match_rooms_to_polygons(room_tags, polygons):
                 break
     return matches
 
+
 def calculate_distance(point, polygon):
     point_geom = Point(point)
     polygon_geom = Polygon(polygon)
     nearest_geom = nearest_points(point_geom, polygon_geom)[1]
     return point_geom.distance(nearest_geom)
 
-def get_match_polygons(file_name, geojson_file, strict = True):
+
+def get_match_polygons(file_name, geojson_file, strict=True):
     room_tags = get_room_tags(file_name)
     room_tags.sort(key=lambda room: room.name)
     i = 0
@@ -385,7 +412,6 @@ def get_match_polygons(file_name, geojson_file, strict = True):
         assert len(room_tags) == len(polygons)
     else:
         assert len(room_tags) <= len(polygons)
-
 
     matches = match_rooms_to_polygons(room_tags, polygons)
 
@@ -424,7 +450,9 @@ def get_match_polygons(file_name, geojson_file, strict = True):
     unmatched_room = [room for room in room_tags if room not in match_room]
 
     # # Find indices of polygons that are not matched
-    unmatched_polygons = [polygon for polygon in polygons if polygon not in match_polygon]
+    unmatched_polygons = [
+        polygon for polygon in polygons if polygon not in match_polygon
+    ]
     n_unmatched_room = len(unmatched_room)
     n_unmatched_polygons = len(unmatched_polygons)
     # print(f"Number of unmatched rooms: {len(unmatched_room)}")
@@ -432,11 +460,9 @@ def get_match_polygons(file_name, geojson_file, strict = True):
     # print(len(matches))
     if strict:
         assert (
-            n_duplicated_room + n_unmatched_room == n_duplicated_polygon + n_unmatched_polygons
+            n_duplicated_room + n_unmatched_room
+            == n_duplicated_polygon + n_unmatched_polygons
         )
-
-
-
 
     for room in unmatched_room:
         room_point = Point(room.coordinates)
@@ -481,7 +507,6 @@ def get_match_polygons(file_name, geojson_file, strict = True):
     # print(len(polygons))
     assert len(room_tags) == len(matches)
 
-
     # Create a list to hold all the features
     features = []
 
@@ -493,7 +518,11 @@ def get_match_polygons(file_name, geojson_file, strict = True):
         # Create a GeoJSON feature for the polygon
         polygon_feature = geojson.Feature(
             geometry=geojson.Polygon([polygon.coordinates]),
-            properties={"id": polygon.id, "room_name": room.name, "labelPosition": room.coordinates},
+            properties={
+                "id": polygon.id,
+                "room_name": room.name,
+                "labelPosition": room.coordinates,
+            },
         )
 
         # Add the feature to the list
@@ -501,13 +530,18 @@ def get_match_polygons(file_name, geojson_file, strict = True):
     for polygon in no_tag_polygon:
         polygon_feature = geojson.Feature(
             geometry=geojson.Polygon([polygon.coordinates]),
-            properties={"id": polygon.id, "room_name": "no_tag", "labelPosition": polygon.coordinates},
+            properties={
+                "id": polygon.id,
+                "room_name": "no_tag",
+                "labelPosition": polygon.coordinates,
+            },
         )
         features.append(polygon_feature)
 
     # Create a FeatureCollection from the features
     feature_collection = geojson.FeatureCollection(features)
     return feature_collection
+
 
 def main():
     file_name = "svg_files/Ansys-a-map.svg"
@@ -520,12 +554,13 @@ def main():
         geojson.dump(gj, f, indent=2)
     feature_collection = get_match_polygons(file_name, gj, strict=False)
     # Write the FeatureCollection to a GeoJSON file in geojson_files folder
-    base_name = os.path.basename(file_name).replace('.svg', '.geojson')
-    output_path = os.path.join('geojson_files', base_name)
+    base_name = os.path.basename(file_name).replace(".svg", ".geojson")
+    output_path = os.path.join("geojson_files", base_name)
     with open(output_path, "w") as f:
         geojson.dump(feature_collection, f, indent=2)
 
     print(f"GeoJSON file {output_path} created successfully.")
+
 
 if __name__ == "__main__":
     main()

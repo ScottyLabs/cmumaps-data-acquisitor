@@ -1,11 +1,12 @@
 from bs4 import BeautifulSoup
 import geojson
-import os
+
 
 def main():
     file_name = "Ansys-d-map.html"
 
     # Load your HTML file
+
     with open(f"html_files/{file_name}", "r", encoding="utf-8") as f:
         soup = BeautifulSoup(f, "html.parser")
 
@@ -26,9 +27,10 @@ def main():
     for k, v in room_map.items():
         print(f"{k} -> {v}")
 
-
     # Load the GeoJSON file containing polygons with rooms
-    with open(f"geojson_files/{file_name.replace('.html', '.geojson')}", "r", encoding="utf-8") as f:
+    with open(
+        f"geojson_files/{file_name.replace('.html', '.geojson')}", "r", encoding="utf-8"
+    ) as f:
         polygons = geojson.load(f)
 
     # Iterate over each feature in the GeoJSON
@@ -46,9 +48,12 @@ def main():
         feature["properties"]["room_type"] = room_type
 
     # Save the updated GeoJSON back to a file
-    with open(f"geojson_files/{file_name.replace('.html', '_updated.geojson')}", "w", encoding="utf-8") as f:
+    with open(
+        f"geojson_files/{file_name.replace('.html', '_updated.geojson')}",
+        "w",
+        encoding="utf-8",
+    ) as f:
         geojson.dump(polygons, f, ensure_ascii=False, indent=2)
-
 
 
 if __name__ == "__main__":
