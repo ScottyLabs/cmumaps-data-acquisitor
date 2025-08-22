@@ -51,7 +51,7 @@ def main():
     response = get_json_from_s3("floorplans/placements.json", return_data=False)
 
     if response:
-        print(f"Got response object")
+        print("Got response object")
         response.close()  # Important to close the response
 
     print("\n=== Example completed ===")
