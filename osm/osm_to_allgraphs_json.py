@@ -39,7 +39,6 @@ for child in root:
         for i in range(0, len(way_nodes)):
             # nodes for buildings are not guaranteed to not be in any ways for paths
             # so you can't just remove any nodes that are in buildings
-            # nodes.pop(way_nodes[i].attrib["ref"])
 
             current_node = nodes.get(way_nodes[i].attrib["ref"], False)
             if current_node:
@@ -69,6 +68,7 @@ for child in root:
                         if tag.attrib['k'] == "name":
                             current_node["entrance"] = tag.attrib['v']
                 elif exclude:
+                    # safe to pop anything that isn't an entrance but is a building
                     nodes.pop(way_nodes[i].attrib["ref"])
 
 
