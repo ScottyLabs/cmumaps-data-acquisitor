@@ -38,6 +38,22 @@ def upload_json_file(local_file_path, s3_object_name):
         return False
 
 
+def download_json_file(s3_object_name, local_file_path):
+    """Download a JSON file from S3 bucket"""
+    try:
+        # Download the file
+        client.fget_object(
+            bucket_name,
+            s3_object_name,
+            local_file_path,
+        )
+        print(f"Successfully downloaded {s3_object_name} to {local_file_path}")
+        return True
+    except Exception as e:
+        print(f"Error downloading {s3_object_name}: {e}")
+        return False
+
+
 def list_bucket_objects():
     """List all objects in the bucket"""
     try:
@@ -51,6 +67,22 @@ def list_bucket_objects():
 
 # List existing objects
 list_bucket_objects()
+
+# Download the "all graphs.json" file
+print("\nDownloading 'all graphs.json' file...")
+s3_file_path = "floorplans/all-graph.json"
+local_file_path = "downloaded_all_graphs.json"
+
+# Check if the file exists in S3 before attempting to download
+try:
+    # Try to get object info to check if it exists
+    client.stat_object(bucket_name, s3_file_path)
+    print(f"File '{s3_file_path}' found in S3 bucket")
+    download_json_file(s3_file_path, local_file_path)
+except Exception as e:
+    print(f"File '{s3_file_path}' not found in S3 bucket: {e}")
+    print("Available files in the bucket:")
+    list_bucket_objects()
 
 # Upload JSON files
 json_files = [
