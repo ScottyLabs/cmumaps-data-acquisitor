@@ -1,0 +1,6 @@
+when running the code, we will create a folder for svg files, (html), and then we download the floorplan from s3, and update the file locally. Finally, we push the updated file s3 again.
+
+Prereq:
+a file for floor ids
+Cookies to get data from ESIM
+=> we update the floorplan
