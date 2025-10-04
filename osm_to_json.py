@@ -128,9 +128,9 @@ def find_entrance_pairs(osm_entrances, floor_nodes, floor_level, distance_thresh
                 osm_entrance['building_code'].upper() == floor_node['floor']['buildingCode'].upper()):
                 score += 0.3
             elif osm_entrance['building_code'] or floor_node['floor'].get('buildingCode'):
-                score += 0.1  # Partial credit if only one has building info
+                score += 0.1  
             
-            # Floor level matching
+            # floor level match
             if osm_entrance['floor_level'] is not None:
                 floor_diff = abs(osm_entrance['floor_level'] - floor_level)
                 if floor_diff == 0:
@@ -142,7 +142,7 @@ def find_entrance_pairs(osm_entrances, floor_nodes, floor_level, distance_thresh
             else:
                 score += 0.1  
             
-            # Check if this is the best match so far
+
             if score > best_score or (score == best_score and dist < best_distance):
                 best_match = {
                     'id': node_id,
@@ -190,13 +190,13 @@ def save_results(entrance_pairs, floor_level, floor_nodes, osm_entrances, output
 graph_data = load_graph_data("downloaded_all_graphs.json")
 
 #Change it to a floor you need
-floor_2_nodes = extract_floor_nodes(graph_data, 2)
+floor_1_nodes = extract_floor_nodes(graph_data, 1)
 
 #parsing osm
 osm_entrances = parse_osm_entrances("export (1).osm")
 
 #finding pairs
-pairs = find_entrance_pairs(osm_entrances, floor_2_nodes, 2)
+pairs = find_entrance_pairs(osm_entrances, floor_1_nodes, 2)
 
 # export results to JSON file
-save_results(pairs, 2, floor_2_nodes, osm_entrances, "my_floor_2_results.json")
+save_results(pairs, 1, floor_1_nodes, osm_entrances, "floor_1_results.json")
