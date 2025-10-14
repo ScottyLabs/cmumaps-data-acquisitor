@@ -8,7 +8,7 @@ import sys
 import argparse
 
 
-DISTANCE_THRESHOLD_METERS = 10.0  #threshold
+DISTANCE_THRESHOLD_METERS = 10.0  #threshold for the distance, adjust if needed
 
 def load_graph_data(file_path="downloaded_all_graphs.json"):
     """Load the graph data from JSON file"""
@@ -97,74 +97,70 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 def find_entrance_pairs(osm_entrances, floor_nodes, floor_level, distance_threshold=DISTANCE_THRESHOLD_METERS):
     matches = []
     
-    print(f"Finding entrance pairs between OSM entrances and floor {floor_level} nodes...")
+    print(f"Finding best floor {floor_level} node match for each OSM entrance...")
     
     for osm_entrance in osm_entrances:
-        best_match = None
-        best_distance = float('inf')
-        best_score = 0
+        # keep track distances for
+        same_floor_matches = []
+        other_floor_matches = []
         
         for node_id, floor_node in floor_nodes.items():
-            # Calculate distance
+            # calculate distance
             dist = calculate_distance(
                 osm_entrance['lat'], osm_entrance['lon'],
                 floor_node['coordinate']['latitude'], 
                 floor_node['coordinate']['longitude']
             )
             
-            # Skip if distance is too far
-            if dist > distance_threshold:
-                continue
-            
-            # Calculate matching score
-            score = 0
-            
-            # Distance score (closer is better)
-            distance_score = max(0, 1 - (dist / distance_threshold))
-            score += distance_score * 0.5
-            
-            # Building code matching
-            if (osm_entrance['building_code'] and floor_node['floor'].get('buildingCode') and 
-                osm_entrance['building_code'].upper() == floor_node['floor']['buildingCode'].upper()):
-                score += 0.3
-            elif osm_entrance['building_code'] or floor_node['floor'].get('buildingCode'):
-                score += 0.1  
-            
-            # floor level match
-            if osm_entrance['floor_level'] is not None:
-                floor_diff = abs(osm_entrance['floor_level'] - floor_level)
-                if floor_diff == 0:
-                    score += 0.2  
-                elif floor_diff == 1:
-                    score += 0.1  
+            # Only consider if within distance threshold
+            if dist <= distance_threshold:
+ 
+                exact_floor_match = False
+                if osm_entrance['floor_level'] is not None:
+                    if osm_entrance['floor_level'] == floor_level:
+                        exact_floor_match = True
                 else:
-                    score += 0.05  
-            else:
-                score += 0.1  
-            
-
-            if score > best_score or (score == best_score and dist < best_distance):
-                best_match = {
-                    'id': node_id,
-                    'lat': floor_node['coordinate']['latitude'],
-                    'lon': floor_node['coordinate']['longitude'],
-                    'floor_level': int(floor_node['floor']['level']),
-                    'building_code': floor_node['floor']['buildingCode'],
-                    'room_id': floor_node.get('roomId', ''),
-                    'pos': floor_node.get('pos', {}),
-                    'neighbors': floor_node.get('neighbors', {})
+                    # assume ground level (floor 1) since many dont have values
+                    if floor_level == 1:
+                        exact_floor_match = True
+                
+                match_data = {
+                    'floor_node': {
+                        'id': node_id,
+                        'lat': floor_node['coordinate']['latitude'],
+                        'lon': floor_node['coordinate']['longitude'],
+                        'floor_level': int(floor_node['floor']['level']),
+                        'building_code': floor_node['floor']['buildingCode'],
+                        'room_id': floor_node.get('roomId', ''),
+                        'pos': floor_node.get('pos', {}),
+                        'neighbors': floor_node.get('neighbors', {})
+                    },
+                    'distance': dist
                 }
-                best_distance = dist
-                best_score = score
+                
+                if exact_floor_match:
+                    same_floor_matches.append(match_data)
+                else:
+                    other_floor_matches.append(match_data)
         
-        if best_match and best_score > 0.3:  # Minimum confidence threshold
+        same_floor_matches.sort(key=lambda x: x['distance']) #sorting for finding the best one
+        other_floor_matches.sort(key=lambda x: x['distance']) #sorting for finding the best one
+        
+        best_match = None
+        if same_floor_matches:
+            best_match = same_floor_matches[0]  # closest same floor match
+        elif other_floor_matches:
+            best_match = other_floor_matches[0]  # closest other floor match
+        
+        # Add the best match if found
+        if best_match:
             matches.append({
                 'osm_entrance': osm_entrance,
-                'floor_node': best_match,
-                'distance_meters': best_distance,
-                'confidence_score': best_score
+                'floor_node': best_match['floor_node'],
+                'distance_meters': best_match['distance']
             })
     
+    print(f"Found {len(matches)} pairs (1 best match per OSM entrance)")
     return matches
 
 def save_results(entrance_pairs, floor_level, floor_nodes, osm_entrances, output_file=None):
@@ -190,13 +186,20 @@ def save_results(entrance_pairs, floor_level, floor_nodes, osm_entrances, output
 graph_data = load_graph_data("downloaded_all_graphs.json")
 
 #Change it to a floor you need
-floor_1_nodes = extract_floor_nodes(graph_data, 1)
+floor_2_nodes = extract_floor_nodes(graph_data, 2)
 
 #parsing osm
 osm_entrances = parse_osm_entrances("export (1).osm")
 
 #finding pairs
-pairs = find_entrance_pairs(osm_entrances, floor_1_nodes, 2)
+pairs = find_entrance_pairs(osm_entrances, floor_2_nodes, 2)
 
 # export results to JSON file
-save_results(pairs, 1, floor_1_nodes, osm_entrances, "floor_1_results.json")
+save_results(pairs, 2, floor_2_nodes, osm_entrances, "my_floor_2_results.json")
+
+### Wasn't sure if this code is completely correct since some of the floor levels are completely wrong, since  
+#   some of these buildings are wrong too (I saw a coord that was actually CUC when put in GMaps which said DH)
+#   This is why I added the code to check for the best floor match or other level match since some did not 
+#  coincide at all. I think possible fix could be just not passing in floor as argument since I feel that 
+# adds a level of complexity that might just make our pairing less accurate. It might be easier to just get raw 
+# pairings without floor level as argument if we are dealing with faulty ESIM data.###
