@@ -36,6 +36,63 @@ def upload_json_file(local_file_path, s3_object_name):
         return False
 
 
+def save_upload_json_file(
+    s3_object_name: str,
+    json_data: dict | list,
+    local_file_path: str = None,
+    indent: int = 2,
+    ensure_ascii: bool = False,
+    cleanup_local: bool = False,
+) -> bool:
+    """
+    Save JSON data to a local file and upload it to S3 bucket
+
+    Args:
+        s3_object_name (str): The object name/path in S3 bucket
+        json_data (dict | list): The JSON data to save and upload
+        local_file_path (str, optional): Local file path. If None, uses s3_object_name
+        indent (int): Number of spaces for JSON indentation (default: 2)
+        ensure_ascii (bool): If True, escape non-ASCII characters (default: False)
+        cleanup_local (bool): If True, delete local file after successful upload (default: False)
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    # Use s3_object_name as local path if not specified
+    local_path = local_file_path if local_file_path else s3_object_name
+
+    try:
+        # Save JSON data to local file with proper formatting
+        with open(local_path, "w", encoding="utf-8") as f:
+            json.dump(json_data, f, indent=indent, ensure_ascii=ensure_ascii)
+        print(f"Successfully saved JSON data to {local_path}")
+
+    except (IOError, OSError) as e:
+        print(f"Error saving file {local_path}: {e}")
+        return False
+    except (TypeError, ValueError) as e:
+        print(f"Error serializing JSON data: {e}")
+        return False
+
+    try:
+        # Upload the file to S3
+        success = upload_json_file(local_path, s3_object_name)
+
+        if success and cleanup_local and local_path != s3_object_name:
+            # Clean up local file if requested and it's not the same as S3 name
+            try:
+                os.remove(local_path)
+                print(f"Cleaned up local file {local_path}")
+            except OSError as e:
+                print(f"Warning: Could not delete local file {local_path}: {e}")
+
+        return success
+
+    except Exception as e:
+        print(f"Error uploading {local_path} to S3: {e}")
+        return False
+
+
 def list_bucket_objects():
     """List all objects in the bucket"""
     try:
