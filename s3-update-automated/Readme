@@ -4,3 +4,12 @@ Prereq:
 a file for floor ids
 Cookies to get data from ESIM
 => we update the floorplan
+
+
+TODO:
+get floor id dictionary (pipeline)
+create a pipeline that use floor id to create correct files to replace floorplans.json
+rewrite placements.json
+
+
+Guide for placements.json
