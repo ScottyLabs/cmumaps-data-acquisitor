@@ -9,3 +9,5 @@ __pycache__/
 *.html
 scrape-buildingid/all_building_htmls.txt
 building_codes/
+
+.DS_Store
