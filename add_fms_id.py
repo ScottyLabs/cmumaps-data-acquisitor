@@ -81,12 +81,12 @@ def insert_fms_field(building: Dict[str, object], fms_id: int) -> Dict[str, obje
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Add fmsId to downloaded buildings using sign_abbrev_mapping.json.")
+    parser = argparse.ArgumentParser(description="Add fmsId to parsed buildings using sign_abbrev_mapping.json.")
     parser.add_argument(
         "--buildings",
         type=Path,
-        default=Path("downloaded_buildings.json"),
-        help="Path to the downloaded buildings JSON (default: downloaded_buildings.json).",
+        default=Path("parsed_buildings.json"),
+        help="Path to the downloaded buildings JSON (default: parsed_buildings.json).",
     )
     parser.add_argument(
         "--mapping",

@@ -27,20 +27,24 @@ import xml.etree.ElementTree as ET
 import json, math, heapq, os
 
 # Input
-OSM_FILE = "export.osm 2"
-DOWNLOADED_BUILDINGS_JSON = "downloaded_buildings.json"
+OSM_FILE = os.environ.get("CMUMAPS_OSM_FILE", "export.osm")
+DOWNLOADED_BUILDINGS_JSON = os.environ.get("CMUMAPS_DOWNLOADED_BUILDINGS_JSON", "downloaded_buildings.json")
 
 # Output
-BUILDING_MAPPING_OUTPUT_JSON = "building_info_map.json"
-PARSED_DATA_OUTPUT_JSON = "parsed_buildings.json"
+BUILDING_MAPPING_OUTPUT_JSON = os.environ.get("CMUMAPS_BUILDING_MAPPING_OUTPUT", "building_info_map.json")
+PARSED_DATA_OUTPUT_JSON = os.environ.get("CMUMAPS_PARSED_BUILDINGS_OUTPUT", "parsed_buildings.json")
 
 # Create mapping from building code to building info from provided JSON files
 osm_id_to_info = {}
 building_info_map = {}
+fallback_name_lookup = {}
 try:
     # Read the primary source of building data
     with open(DOWNLOADED_BUILDINGS_JSON, 'r') as f:
         downloaded_buildings = json.load(f)
+
+    # Track entries without an explicit OSM ID so we can fall back to name matching
+    name_match_candidates = {}
 
     # Iterate once to create both the file and the internal map
     for code, data in downloaded_buildings.items():
@@ -53,18 +57,41 @@ try:
         
         # Data for the internal osm_id_to_info map used for parsing
         osm_id = data.get("osmId")
+        floors = data.get("floors")
         if osm_id:
             osm_id_to_info[osm_id] = {
                 "code": code,
                 "name": data.get("name", "Unknown"),
-                "defaultFloor": data.get("defaultFloor", "1")
+                "defaultFloor": data.get("defaultFloor", "1"),
+                "floors": floors
             }
+        else:
+            name_value = (data.get("name") or "").strip()
+            if name_value:
+                key = name_value.lower()
+                name_match_candidates.setdefault(key, []).append({
+                    "code": code,
+                    "name": name_value,
+                    "defaultFloor": data.get("defaultFloor", "1"),
+                    "floors": floors
+                })
 
     # Write the new building_info_map.json file
     with open(BUILDING_MAPPING_OUTPUT_JSON, 'w') as f:
         json.dump(building_info_map, f, indent=4)
     
     print(f"Successfully created {BUILDING_MAPPING_OUTPUT_JSON} with {len(building_info_map)} buildings.")
+
+    ambiguous_names = []
+    for name_key, entries in name_match_candidates.items():
+        if len(entries) == 1:
+            fallback_name_lookup[name_key] = entries[0]
+        else:
+            ambiguous_names.extend(entry["name"] for entry in entries)
+    if ambiguous_names:
+        print("Warning: Multiple buildings share the same name, skipping automatic matching for:")
+        for name in sorted(set(ambiguous_names)):
+            print(f" - {name}")
 
 except FileNotFoundError as e:
     print(f"Error: Could not find {DOWNLOADED_BUILDINGS_JSON}. {e}. Aborting.")
@@ -74,7 +101,7 @@ except json.JSONDecodeError as e:
     exit()
 
 # Computes what and how many buildings are missing in parsed_buildings from downloaded_buildings
-# Note: (1) Posner Center has same OSM ID as Kraus Campo. (2) Scott Hall does not have a OSM ID
+# Note: (1) Posner Center has same OSM ID as Kraus Campo.
 def analyze_missing_buildings():
     if not os.path.exists("building_info_map.json") or not os.path.exists("parsed_buildings.json"):
         print("Missing input files (building_info_map.json or parsed_buildings.json).")
@@ -171,6 +198,22 @@ def point_in_ring(pt, ring):
 def point_in_multipolygon(pt, rings):
     """Check if a point is inside any exterior ring."""
     return any(point_in_ring(pt, r) for r in rings)
+
+def match_building_by_name(tags, assigned_codes):
+    """Return building info for entries lacking osmId by matching OSM names."""
+    for key in ("name", "alt_name", "short_name", "official_name"):
+        label = tags.get(key)
+        if not label:
+            continue
+        normalized = label.strip().lower()
+        if not normalized:
+            continue
+        info = fallback_name_lookup.get(normalized)
+        if info and info["code"] not in assigned_codes:
+            fallback_name_lookup.pop(normalized, None)
+            print(f"Matched '{info['name']}' ({info['code']}) to OSM feature via tag '{key}'.")
+            return info
+    return None
 
 # Polylabel (Finds the visual center of a polygon)
 def point_segment_distance(x,y,x1,y1,x2,y2):
@@ -299,12 +342,14 @@ def hull_from_rings(rings):
     return convex_hull(pts) if len(pts)>=3 else close_ring(pts)
 
 # Building assembly
-def assemble_entry(osm_id, code, name, defaultFloor, tags, shapes, rings, way_nodesets):
+def assemble_entry(osm_id, info, tags, shapes, rings, way_nodesets):
     """Assemble one building entry with all fields."""
     label=polylabel(rings) or polygon_area_and_centroid(rings[0])[1:]
     cx,cy=label
     hull=hull_from_rings(rings)
-    floors=floors_from_levels(tags)
+    floors_override = info.get("floors")
+    floors = floors_from_levels(tags) if floors_override is None else floors_override
+    defaultFloor = info.get("defaultFloor", "1")
 
     # collect entrances on boundary and interior
     boundary=set().union(*way_nodesets)
@@ -315,45 +360,62 @@ def assemble_entry(osm_id, code, name, defaultFloor, tags, shapes, rings, way_no
             if point_in_multipolygon((lon,lat),rings): entrances.add(nid)
 
     return {
-        "name": name,
+        "name": info.get("name"),
         "osmId": str(osm_id),
         "floors": floors,
         "defaultFloor": str(defaultFloor),
         "labelPosition": {"latitude":cy,"longitude":cx},
         "shapes": shapes,
         "hitbox": [{"latitude":y,"longitude":x} for x,y in hull],
-        "code": code,
+        "code": info.get("code"),
         "entrances": [str(e) for e in sorted(entrances)]
     }
 
 # Collect buildings
 buildings, outer_ways_used={}, set()
+assigned_codes=set()
 
 # Relations (multipolygon buildings)
 for rel in relations:
-    if "building" not in rel["tags"]: continue
     osm_id = rel["id"]
-    if osm_id in osm_id_to_info:
-        info = osm_id_to_info[osm_id]
-        outer=[m["ref"] for m in rel["members"] if m["type"]=="way" and m.get("role")=="outer"]
-        if not outer: outer=[m["ref"] for m in rel["members"] if m["type"]=="way"]
-        shapes,rings,nodesets=[],[],[]
-        for wid in outer:
-            shape,ring,nids=shape_from_way(wid)
-            if shape: shapes.append(shape); rings.append(ring); nodesets.append(set(nids)); outer_ways_used.add(wid)
-        if shapes:
-            entry=assemble_entry(osm_id, info["code"], info["name"], info["defaultFloor"], rel["tags"],shapes,rings,nodesets)
-            buildings[entry["code"]]=entry
+    tags = rel["tags"]
+    info = osm_id_to_info.get(osm_id)
+    if not info:
+        if "building" not in tags:
+            continue
+        info = match_building_by_name(tags, assigned_codes)
+        if not info:
+            continue
+    outer=[m["ref"] for m in rel["members"] if m["type"]=="way" and m.get("role")=="outer"]
+    if not outer: outer=[m["ref"] for m in rel["members"] if m["type"]=="way"]
+    shapes,rings,nodesets=[],[],[]
+    for wid in outer:
+        shape,ring,nids=shape_from_way(wid)
+        if shape: shapes.append(shape); rings.append(ring); nodesets.append(set(nids)); outer_ways_used.add(wid)
+    if shapes:
+        entry=assemble_entry(osm_id, info, tags,shapes,rings,nodesets)
+        buildings[entry["code"]]=entry
+        assigned_codes.add(entry["code"])
 
 # Standalone ways (not already used)
 for wid,w in ways_by_id.items():
-    if "building" not in w["tags"] or wid in outer_ways_used: continue
-    if wid in osm_id_to_info:
-        info = osm_id_to_info[wid]
-        shape,ring,nids=shape_from_way(wid)
-        if shape:
-            entry=assemble_entry(wid, info["code"], info["name"], info["defaultFloor"], w["tags"],[shape],[ring],[set(nids)])
-            buildings[entry["code"]]=entry
+    if wid in outer_ways_used: continue
+    tags=w["tags"]
+    info = osm_id_to_info.get(wid)
+    if not info:
+        info = match_building_by_name(tags, assigned_codes)
+        if not info and "building" not in tags:
+            continue
+    shape,ring,nids=shape_from_way(wid)
+    if shape and info:
+        entry=assemble_entry(wid, info, tags,[shape],[ring],[set(nids)])
+        buildings[entry["code"]]=entry
+        assigned_codes.add(entry["code"])
+
+if fallback_name_lookup:
+    print("Unable to locate the following buildings in the OSM export:")
+    for info in sorted(fallback_name_lookup.values(), key=lambda x: x["code"]):
+        print(f" - {info['name']} ({info['code']})")
 
 # Write JSON
 with open(PARSED_DATA_OUTPUT_JSON,"w") as f: json.dump(buildings,f,indent=4)

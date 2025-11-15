@@ -1,4 +1,5 @@
-"""Create a mapping from CMU sign abbreviations to building identifiers.
+"""
+Create a mapping from CMU sign abbreviations to building identifiers.
 
 The script walks the ArcGIS export stored in query.json and writes a JSON
 mapping that associates each building's signage abbreviation (or short name
