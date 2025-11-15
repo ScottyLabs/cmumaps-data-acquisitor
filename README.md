@@ -16,7 +16,7 @@
 
 1. Clone `cmumaps-data-acquisitor` from the GitHub by running `git clone https://github.com/ScottyLabs/cmumaps-data-acquisitor.git`.
 
-2. Run `pip install minio`
+2. Run `pip install -r requirements.txt` (this includes `minio`)
 
 ### Set up environment variables
 
