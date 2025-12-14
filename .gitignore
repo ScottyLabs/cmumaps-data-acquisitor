@@ -1,5 +1,6 @@
 .env
 .venv
+/venv
 # Python cache files
 __pycache__/
 *.py[cod]
@@ -9,5 +10,5 @@ __pycache__/
 *.html
 scrape-buildingid/all_building_htmls.txt
 building_codes/
-
+svg_files/
 .DS_Store
